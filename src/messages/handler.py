@@ -1,10 +1,8 @@
-import os
 import json
-from collections.abc import Callable, Mapping
+from loguru import logger
+from collections.abc import Callable
 from uuid import uuid4
-from pydantic import SecretStr
 import lark_oapi as lark
-from langchain.agents import create_agent
 from langchain_core.runnables import Runnable, RunnableConfig
 
 from lark_oapi.api.im.v1 import (
@@ -13,12 +11,11 @@ from lark_oapi.api.im.v1 import (
     CreateMessageResponse,
 )
 
-from src.event_message import as_mapping, extract_text_message
+from src.messages.utils import as_mapping, extract_text_message
 from src.feishu import build_feishu_client
 from src.middlewares import FeishuRuntimeContext
 
-
-
+EVENT_ID_SET = set()
 
 def send_text_message(*, client: lark.Client, open_id: str, text: str) -> CreateMessageResponse:
     request: CreateMessageRequest = (
@@ -46,6 +43,8 @@ def send_text_message(*, client: lark.Client, open_id: str, text: str) -> Create
     return message.create(request)
 
 
+
+
 def build_p2p_text_message_handler(
     *,
     agent: Runnable,
@@ -69,7 +68,12 @@ def build_p2p_text_message_handler(
         if extracted is None:
             return
 
-        open_id, user_text = extracted
+        open_id,event_id, user_text = extracted
+        if event_id in EVENT_ID_SET:
+            logger.info(f"Duplicate event_id: {event_id}")
+            return
+        EVENT_ID_SET.add(event_id)
+
         config: RunnableConfig = {
             "configurable": {"thread_id": f"feishu:{open_id}"},
             "recursion_limit": 10,

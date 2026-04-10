@@ -8,7 +8,16 @@ def as_mapping(value: object) -> Mapping[str, object] | None:
     return None
 
 
-def extract_text_message(event: Mapping[str, object]) -> tuple[str, str] | None:
+def extract_text_message(event: Mapping[str, object]) -> tuple[str,str,str] | None:
+
+    header = as_mapping(event.get("header"))
+    if header is None:
+        return None
+    
+    event_id = header.get("event_id")
+    if not isinstance(event_id, str) or not event_id:
+        return None
+
     inner_event = as_mapping(event.get("event"))
     if inner_event is None:
         return None
@@ -28,6 +37,7 @@ def extract_text_message(event: Mapping[str, object]) -> tuple[str, str] | None:
     open_id_obj = sender_id.get("open_id")
     if not isinstance(open_id_obj, str) or not open_id_obj:
         return None
+
 
     message = as_mapping(inner_event.get("message"))
     if message is None:
@@ -56,5 +66,6 @@ def extract_text_message(event: Mapping[str, object]) -> tuple[str, str] | None:
     text = text_obj.strip()
     if not text:
         return None
+    
 
-    return open_id_obj, text
+    return open_id_obj,event_id,text

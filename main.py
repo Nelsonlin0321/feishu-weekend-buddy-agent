@@ -4,7 +4,7 @@ import lark_oapi as lark
 from src.prompt import SYSTEM_PROMPT
 from src.agent import build_agent
 from src.feishu import build_feishu_client
-from src.agent_runtime import (
+from src.messages.handler import (
     build_event_handler,
     build_p2p_text_message_handler,
 )
