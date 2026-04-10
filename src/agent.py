@@ -3,12 +3,14 @@ from pathlib import Path
 from pydantic import SecretStr
 from langchain_core.runnables import Runnable
 from langchain.agents import create_agent
-
 from src.model import build_model
-from src.middlewares import FeishuRuntimeContext, LoadHistoryMiddleware, SaveHistoryMiddleware
+from src.types.context import FeishuRuntimeContext
+from src.middlewares import  LoadHistoryMiddleware, SaveHistoryMiddleware
+from src.tools.knowledge import build_knowledge_tools
 
 
 DEEPINFRA_API_KEY =  SecretStr(os.getenv("DEEPINFRA_API_KEY",""))
+
 
 def build_agent(
     system_prompt: str,
@@ -18,9 +20,10 @@ def build_agent(
 ) -> Runnable:
     model = build_model()
     base_dir = Path(memory_base_dir)
+    tools = build_knowledge_tools(base_dir=base_dir)
     return create_agent(
         model=model,
-        tools=[],
+        tools=tools,
         system_prompt=system_prompt,
         context_schema=FeishuRuntimeContext,
         middleware=[
@@ -37,4 +40,3 @@ if __name__ == "__main__":
     agent = build_agent("You are a helpful assistant.")
     response = agent.invoke({"messages": start_messages})
     print(response)
-
