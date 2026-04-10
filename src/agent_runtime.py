@@ -15,6 +15,7 @@ from lark_oapi.api.im.v1 import (
 
 from src.event_message import as_mapping, extract_text_message
 from src.feishu import build_feishu_client
+from src.middlewares import FeishuRuntimeContext
 
 
 
@@ -49,6 +50,7 @@ def build_p2p_text_message_handler(
     *,
     agent: Runnable,
     feishu_client: lark.Client,
+    history_to_load: int = 20,
 ) -> Callable[[lark.im.v1.P2ImMessageReceiveV1], None]:
     def do_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1) -> None:
         try:
@@ -72,7 +74,12 @@ def build_p2p_text_message_handler(
             "configurable": {"thread_id": f"feishu:{open_id}"},
             "recursion_limit": 10,
         }
-        result = agent.invoke({"messages": [{"role": "user", "content": user_text}]}, config=config)
+        context = FeishuRuntimeContext(open_id=open_id, history_to_load=history_to_load)
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": user_text}]},
+            config=config,
+            context=context,
+        )
         reply_obj = result["messages"][-1].content
         reply = reply_obj if isinstance(reply_obj, str) else str(reply_obj)
         send_text_message(client=feishu_client, open_id=open_id, text=reply)
@@ -94,7 +101,6 @@ def build_event_handler(
 
 
 __all__ = [
-    "build_agent",
     "build_event_handler",
     "build_p2p_text_message_handler",
     "build_feishu_client",
