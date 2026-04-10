@@ -42,9 +42,6 @@ def send_text_message(*, client: lark.Client, open_id: str, text: str) -> Create
         raise RuntimeError("Feishu IM message API is not available on this client")
     return message.create(request)
 
-
-
-
 def build_p2p_text_message_handler(
     *,
     agent: Runnable,
@@ -79,12 +76,19 @@ def build_p2p_text_message_handler(
             "recursion_limit": 10,
         }
         context = FeishuRuntimeContext(open_id=open_id, history_to_load=history_to_load)
-        result = agent.invoke(
+        events = agent.stream(
             {"messages": [{"role": "user", "content": user_text}]},
             config=config,
             context=context,
         )
-        reply_obj = result["messages"][-1].content
+        content:str=""
+        for event in events:
+            if "messages" in event:
+                message = event["messages"][-1]
+                message.pretty_print()
+                content = message.content
+
+        reply_obj = content
         reply = reply_obj if isinstance(reply_obj, str) else str(reply_obj)
         send_text_message(client=feishu_client, open_id=open_id, text=reply)
 

@@ -35,7 +35,7 @@ def _safe_knowledge_path(*, base_dir: Path, open_id: str, rel_path: str) -> Path
         raise ValueError("rel_path must stay within knowledge/ directory")
     return candidate
 
-
+# memory/{open_id}/knowledge
 def write_knowledge_record(
     *,
     base_dir: Path,
@@ -56,9 +56,9 @@ def write_knowledge_record(
     if kind == "event":
         day = event_date or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
         month = day[:7]
-        rel = f"{category_slug}/{month}/{day}_{name_slug}_{ts}.md"
+        rel = f"{root}/{category_slug}/{month}/{day}_{name_slug}_{ts}.md"
     else:
-        rel = f"{category_slug}/{name_slug}.md"
+        rel = f"{root}/{category_slug}/{name_slug}.md"
 
     path = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,7 +105,7 @@ def write_knowledge_record(
     path.write_text(markdown, encoding="utf-8")
     return path
 
-
+# memory/{open_id}/knowledge
 def read_knowledge_record(*, base_dir: Path, open_id: str, rel_path: str) -> str:
     path = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel_path)
     return path.read_text(encoding="utf-8")
@@ -116,7 +116,7 @@ def list_knowledge_tree(
     base_dir: Path,
     open_id: str,
     rel_path: str = ".",
-    max_depth: int = 4,
+    max_depth: int = 10,
     max_entries: int = 200,
 ) -> str:
     root = knowledge_dir(base_dir=base_dir, open_id=open_id)
@@ -165,12 +165,19 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
         mode: str = "upsert",
         event_date: str | None = None,
     ) -> str:
-        """Write long-term knowledge to /memory/{open_id}/knowledge.
+        """
+        
+        Write down long-term knowledge to capture the user preferences, activity, availability, location, budget, group vibe etc, any other important information.
 
         Args:
-            category: High-level folder name (e.g., "preferences", "schedule", "activity_history", "profile").
-            name: Human-readable name used in the file name.
-            content: JSON-serializable content to store.
+            category: Folder/category label used to organize knowledge. Use as many distinct categories as you need as
+                long as they help you quickly find things later (keep them consistent and easy to remember), e.g.
+                "preferences", "availability", "constraints", "people", "places", "budgets", "activity_history",
+                "profile", "conversation_notes".
+            name: Human-readable title used in the file name. Make it descriptive of the content; it can be long and
+                very specific so you can reliably retrieve it later, e.g. "Alice: prefers spicy Sichuan, hates cilantro"
+                or "Weekend availability: usually Sat after 15:00, Sun flexible".
+            content: markdown content to store.
             kind: "document" (stable file) or "event" (timestamped file under YYYY-MM/).
             mode: "upsert" (append an Update section for documents) or "replace" (overwrite).
             event_date: Optional YYYY-MM-DD for kind="event".
@@ -188,7 +195,8 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
             event_date=event_date,
         )
         root = knowledge_dir(base_dir=base_dir, open_id=open_id)
-        return str(path.relative_to(root))
+
+        return f"Written to {path.relative_to(root)} successfully"
 
     @tool("knowledge_read")
     def knowledge_read(rel_path: str, tool_runtime: ToolRuntime[FeishuRuntimeContext]) -> str:
@@ -200,8 +208,8 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
     def knowledge_tree(
         tool_runtime: ToolRuntime[FeishuRuntimeContext],
         rel_path: str = ".",
-        max_depth: int = 4,
-        max_entries: int = 200,
+        max_depth: int = 10,
+        max_entries: int = 500,
     ) -> str:
         """Show knowledge folder structure (tree) under /memory/{open_id}/knowledge."""
         open_id = tool_runtime.context.open_id
