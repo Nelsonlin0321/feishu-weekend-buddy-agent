@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
 from src.middlewares.history_storage import write_message
-from src.middlewares.runtime_context import FeishuRuntimeContext
+from src.types.context import FeishuRuntimeContext
 
 
 def _open_id_from_runtime(runtime: Runtime[FeishuRuntimeContext]) -> str | None:
@@ -59,4 +59,3 @@ class SaveHistoryMiddleware(AgentMiddleware[AgentState[object], FeishuRuntimeCon
                 content=last_ai.content,
             )
         return None
-

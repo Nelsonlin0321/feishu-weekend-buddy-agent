@@ -43,7 +43,7 @@ def write_knowledge_record(
     category: str,
     name: str,
     kind: KnowledgeRecordKind,
-    content: object,
+    content: str,
     mode: KnowledgeWriteMode = "upsert",
     timestamp: str | None = None,
     event_date: str | None = None,
@@ -56,42 +56,59 @@ def write_knowledge_record(
     if kind == "event":
         day = event_date or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
         month = day[:7]
-        rel = f"{category_slug}/{month}/{day}_{name_slug}_{ts}.json"
+        rel = f"{category_slug}/{month}/{day}_{name_slug}_{ts}.md"
     else:
-        rel = f"{category_slug}/{name_slug}.json"
+        rel = f"{category_slug}/{name_slug}.md"
 
     path = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    payload: dict[str, object] = {
-        "kind": kind,
-        "category": category_slug,
-        "name": name_slug,
-        "timestamp": ts,
-        "content": _coerce_jsonable(content),
-    }
+    
+    body = content.strip()
 
-    if mode == "upsert" and path.exists():
-        try:
-            existing_raw = path.read_text(encoding="utf-8")
-            existing_obj = json.loads(existing_raw)
-            if isinstance(existing_obj, dict):
-                existing_obj.update(payload)
-                payload = existing_obj
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            pass
+    frontmatter = "\n".join(
+        [
+            "---",
+            f"kind: {kind}",
+            f"category: {category_slug}",
+            f"name: {name_slug}",
+            f"timestamp: {ts}",
+            "---",
+            "",
+        ]
+    )
 
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if kind == "document" and mode == "upsert" and path.exists():
+        existing = path.read_text(encoding="utf-8")
+        updated = "\n".join(
+            [
+                existing.rstrip(),
+                "",
+                f"## Update {ts}",
+                "",
+                body,
+                "",
+            ]
+        )
+        path.write_text(updated, encoding="utf-8")
+        return path
+
+    markdown = "\n".join(
+        [
+            frontmatter,
+            f"# {category_slug}: {name_slug}",
+            "",
+            body,
+            "",
+        ]
+    )
+    path.write_text(markdown, encoding="utf-8")
     return path
 
 
-def read_knowledge_record(*, base_dir: Path, open_id: str, rel_path: str) -> object:
+def read_knowledge_record(*, base_dir: Path, open_id: str, rel_path: str) -> str:
     path = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel_path)
-    raw = path.read_text(encoding="utf-8")
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return raw
+    return path.read_text(encoding="utf-8")
 
 
 def list_knowledge_tree(
@@ -142,7 +159,7 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
     def knowledge_write(
         category: str,
         name: str,
-        content: object,
+        content: str,
         tool_runtime: ToolRuntime[FeishuRuntimeContext],
         kind: str = "document",
         mode: str = "upsert",
@@ -155,7 +172,7 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
             name: Human-readable name used in the file name.
             content: JSON-serializable content to store.
             kind: "document" (stable file) or "event" (timestamped file under YYYY-MM/).
-            mode: "upsert" (merge into existing JSON) or "replace" (overwrite).
+            mode: "upsert" (append an Update section for documents) or "replace" (overwrite).
             event_date: Optional YYYY-MM-DD for kind="event".
         """
         ctx = tool_runtime.context
@@ -174,28 +191,20 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
         return str(path.relative_to(root))
 
     @tool("knowledge_read")
-    def knowledge_read(rel_path: str, tool_runtime: ToolRuntime) -> str:
+    def knowledge_read(rel_path: str, tool_runtime: ToolRuntime[FeishuRuntimeContext]) -> str:
         """Read a knowledge file by relative path under /memory/{open_id}/knowledge."""
-        ctx = cast(FeishuRuntimeContext, tool_runtime.context)
-        open_id = ctx.open_id
-        obj = read_knowledge_record(base_dir=base_dir, open_id=open_id, rel_path=rel_path)
-        try:
-            import json
-
-            return json.dumps(obj, ensure_ascii=False, indent=2)
-        except (TypeError, ValueError):
-            return str(obj)
+        ctx = tool_runtime.context
+        return read_knowledge_record(base_dir=base_dir, open_id=ctx.open_id, rel_path=rel_path)
 
     @tool("knowledge_tree")
     def knowledge_tree(
-        tool_runtime: ToolRuntime,
+        tool_runtime: ToolRuntime[FeishuRuntimeContext],
         rel_path: str = ".",
         max_depth: int = 4,
         max_entries: int = 200,
     ) -> str:
         """Show knowledge folder structure (tree) under /memory/{open_id}/knowledge."""
-        ctx = cast(FeishuRuntimeContext, tool_runtime.context)
-        open_id = ctx.open_id
+        open_id = tool_runtime.context.open_id
         return list_knowledge_tree(
             base_dir=base_dir,
             open_id=open_id,

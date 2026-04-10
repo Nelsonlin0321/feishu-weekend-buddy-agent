@@ -9,7 +9,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 
 from src.middlewares.history_storage import read_recent_messages
-from src.middlewares.runtime_context import FeishuRuntimeContext
+from src.types.context import FeishuRuntimeContext
 
 
 def _content_for_message(value: object) -> str:
