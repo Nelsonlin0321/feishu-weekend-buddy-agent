@@ -6,7 +6,7 @@ dotenv.load_dotenv()
 DEEPINFRA_API_KEY = SecretStr(get_env("DEEPINFRA_API_KEY"))
 
 
-def get_model(
+def build_model(
     model_name: str="openai/gpt-oss-120b",
     reasoning: bool = True,
 ):
@@ -19,7 +19,11 @@ def get_model(
     return llm
 
 
+__all__ = [
+    "build_model",
+]
+
 if __name__ == "__main__":
     # python -m src.models
-    model = get_model()
+    model = build_model()
     print(model.invoke("Hello"))

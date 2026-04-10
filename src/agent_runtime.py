@@ -6,7 +6,7 @@ from pydantic import SecretStr
 import lark_oapi as lark
 from langchain.agents import create_agent
 from langchain_core.runnables import Runnable, RunnableConfig
-from langchain_deepseek import ChatDeepSeek
+
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest,
     CreateMessageRequestBody,
@@ -16,22 +16,7 @@ from lark_oapi.api.im.v1 import (
 from src.event_message import as_mapping, extract_text_message
 from src.feishu import build_feishu_client
 
-def build_agent(
-    system_prompt: str,
-    model: str,
-    temperature: float,
-    extra_body: Mapping[str, object] | None,
-) -> Runnable:
-    chat = ChatDeepSeek(
-        model=model,
-        temperature=temperature,
-        extra_body=dict(extra_body) if extra_body is not None else None,
-    )
-    return create_agent(
-        model=chat,
-        tools=[],
-        system_prompt=system_prompt,
-    )
+
 
 
 def send_text_message(*, client: lark.Client, open_id: str, text: str) -> CreateMessageResponse:

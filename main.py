@@ -1,12 +1,11 @@
 import os
-
 import dotenv
 import lark_oapi as lark
 from src.prompt import SYSTEM_PROMPT
+from src.agent import build_agent
+from src.feishu import build_feishu_client
 from src.agent_runtime import (
-    build_agent,
     build_event_handler,
-    build_feishu_client,
     build_p2p_text_message_handler,
 )
 
@@ -23,9 +22,6 @@ def run() -> None:
 
     agent = build_agent(
         system_prompt=SYSTEM_PROMPT,
-        model="openai/gpt-oss-120b",
-        temperature=0.7,
-        extra_body={"reasoning": {"enabled": True}},
     )
     feishu_client = build_feishu_client(app_id=FEISHU_APP_ID, app_secret=FEISHU_APP_SECRET)
     message_handler = build_p2p_text_message_handler(agent=agent, feishu_client=feishu_client)
@@ -49,4 +45,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    #  python main.py
     main()
