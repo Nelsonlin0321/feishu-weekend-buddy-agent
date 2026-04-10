@@ -1,228 +1,74 @@
-import json
-import re
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, cast
+from src.tools.knowledge_paths import _safe_knowledge_path, knowledge_dir, safe_knowledge_path, slugify
+from src.tools.knowledge_records import list_knowledge_tree, read_knowledge_record, write_knowledge_record
+from src.tools.knowledge_tools import build_knowledge_tools
+from src.tools.knowledge_types import KnowledgeRecordKind, KnowledgeWriteMode
 
-from langchain.tools import ToolRuntime, tool
-from langchain_core.tools import BaseTool
-
-from src.types.context import FeishuRuntimeContext
-from src.middlewares.history_storage import _coerce_jsonable, now_timestamp, sanitize_open_id
-
-KnowledgeWriteMode = Literal["upsert", "replace"]
-KnowledgeRecordKind = Literal["document", "event"]
-
-
-def knowledge_dir(*, base_dir: Path, open_id: str) -> Path:
-    return base_dir / sanitize_open_id(open_id) / "knowledge"
-
-
-_SLUG_SAFE = re.compile(r"[^a-zA-Z0-9_\-]")
-
-
-def slugify(value: str) -> str:
-    return _SLUG_SAFE.sub("_", value.strip().lower()).strip("_") or "untitled"
+__all__ = [
+    "KnowledgeRecordKind",
+    "KnowledgeWriteMode",
+    "_safe_knowledge_path",
+    "build_knowledge_tools",
+    "knowledge_dir",
+    "list_knowledge_tree",
+    "read_knowledge_record",
+    "safe_knowledge_path",
+    "slugify",
+    "write_knowledge_record",
+]
 
 
-def _safe_knowledge_path(*, base_dir: Path, open_id: str, rel_path: str) -> Path:
-    root = knowledge_dir(base_dir=base_dir, open_id=open_id)
-    if not rel_path or rel_path.startswith("/"):
-        raise ValueError("rel_path must be a non-empty relative path under knowledge/")
+if __name__ == "__main__":
 
-    candidate = (root / rel_path).resolve()
-    if not candidate.is_relative_to(root.resolve()):
-        raise ValueError("rel_path must stay within knowledge/ directory")
-    return candidate
+    base_dir = Path("./memory")
+    print(base_dir.absolute())
+    open_id = "ou_test_user_123"
 
-# memory/{open_id}/knowledge
-def write_knowledge_record(
-    *,
-    base_dir: Path,
-    open_id: str,
-    category: str,
-    name: str,
-    kind: KnowledgeRecordKind,
-    content: str,
-    mode: KnowledgeWriteMode = "upsert",
-    timestamp: str | None = None,
-    event_date: str | None = None,
-) -> Path:
-    ts = timestamp or now_timestamp()
-    category_slug = slugify(category)
-    name_slug = slugify(name)
-
-    root = knowledge_dir(base_dir=base_dir, open_id=open_id)
-    if kind == "event":
-        day = event_date or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
-        month = day[:7]
-        rel = f"{root}/{category_slug}/{month}/{day}_{name_slug}_{ts}.md"
-    else:
-        rel = f"{root}/{category_slug}/{name_slug}.md"
-
-    path = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    
-    body = content.strip()
-
-    frontmatter = "\n".join(
-        [
-            "---",
-            f"kind: {kind}",
-            f"category: {category_slug}",
-            f"name: {name_slug}",
-            f"timestamp: {ts}",
-            "---",
-            "",
-        ]
+    doc_path = write_knowledge_record(
+        base_dir=base_dir,
+        open_id=open_id,
+        category="preferences",
+        name="Alice: food likes/dislikes",
+        kind="document",
+        content="Likes: spicy Sichuan\nDislikes: cilantro",
+        mode="replace",
     )
+    assert doc_path.exists()
 
-    if kind == "document" and mode == "upsert" and path.exists():
-        existing = path.read_text(encoding="utf-8")
-        updated = "\n".join(
-            [
-                existing.rstrip(),
-                "",
-                f"## Update {ts}",
-                "",
-                body,
-                "",
-            ]
-        )
-        path.write_text(updated, encoding="utf-8")
-        return path
-
-    markdown = "\n".join(
-        [
-            frontmatter,
-            f"# {category_slug}: {name_slug}",
-            "",
-            body,
-            "",
-        ]
+    doc_path_2 = write_knowledge_record(
+        base_dir=base_dir,
+        open_id=open_id,
+        category="preferences",
+        name="Alice: food likes/dislikes",
+        kind="document",
+        content="Also likes: hotpot",
+        mode="upsert",
     )
-    path.write_text(markdown, encoding="utf-8")
-    return path
+    assert doc_path_2 == doc_path
 
-# memory/{open_id}/knowledge
-def read_knowledge_record(*, base_dir: Path, open_id: str, rel_path: str) -> str:
-    path = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel_path)
-    return path.read_text(encoding="utf-8")
+    root = knowledge_dir(base_dir=base_dir, open_id=open_id).resolve()
+    doc_rel = str(doc_path.relative_to(root))
+    doc_content = read_knowledge_record(base_dir=base_dir, open_id=open_id, rel_path=doc_rel)
+    assert "Likes: spicy Sichuan" in doc_content
+    assert "Also likes: hotpot" in doc_content
 
+    event_path = write_knowledge_record(
+        base_dir=base_dir,
+        open_id=open_id,
+        category="activity_history",
+        name="Weekend plan",
+        kind="event",
+        content="Went to a board game cafe with friends.",
+        mode="replace",
+    )
+    assert event_path.exists()
 
-def list_knowledge_tree(
-    *,
-    base_dir: Path,
-    open_id: str,
-    rel_path: str = ".",
-    max_depth: int = 10,
-    max_entries: int = 200,
-) -> str:
-    root = knowledge_dir(base_dir=base_dir, open_id=open_id)
-    root_resolved = root.resolve()
-    start = _safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel_path)
-    if not start.exists():
-        return f"(empty) {start.relative_to(root_resolved)} does not exist"
+    event_rel = str(event_path.relative_to(root))
+    event_content = read_knowledge_record(base_dir=base_dir, open_id=open_id, rel_path=event_rel)
+    assert "Went to a board game cafe with friends." in event_content
 
-    lines: list[str] = [str(start.relative_to(root_resolved)) + ("/" if start.is_dir() else "")]
-    count = 0
-
-    def walk(current: Path, depth: int) -> None:
-        nonlocal count
-        if count >= max_entries:
-            return
-        if depth > max_depth:
-            return
-        if not current.is_dir():
-            return
-
-        entries = sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name))
-        for entry in entries:
-            if count >= max_entries:
-                return
-            prefix = "  " * depth
-            rel = entry.relative_to(root_resolved)
-            lines.append(f"{prefix}- {rel}" + ("/" if entry.is_dir() else ""))
-            count += 1
-            if entry.is_dir():
-                walk(entry, depth + 1)
-
-    walk(start, 1)
-    if count >= max_entries:
-        lines.append("... (truncated)")
-    return "\n".join(lines)
-
-
-def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
-    @tool("knowledge_write")
-    def knowledge_write(
-        category: str,
-        name: str,
-        content: str,
-        tool_runtime: ToolRuntime[FeishuRuntimeContext],
-        kind: str = "document",
-        mode: str = "upsert",
-        event_date: str | None = None,
-    ) -> str:
-        """
-        
-        Write down long-term knowledge to capture the user preferences, activity, availability, location, budget, group vibe etc, any other important information.
-
-        Args:
-            category: Folder/category label used to organize knowledge. Use as many distinct categories as you need as
-                long as they help you quickly find things later (keep them consistent and easy to remember), e.g.
-                "preferences", "availability", "constraints", "people", "places", "budgets", "activity_history",
-                "profile", "conversation_notes".
-            name: Human-readable title used in the file name. Make it descriptive of the content; it can be long and
-                very specific so you can reliably retrieve it later, e.g. "Alice: prefers spicy Sichuan, hates cilantro"
-                or "Weekend availability: usually Sat after 15:00, Sun flexible".
-            content: markdown content to store.
-            kind: "document" (stable file) or "event" (timestamped file under YYYY-MM/).
-            mode: "upsert" (append an Update section for documents) or "replace" (overwrite).
-            event_date: Optional YYYY-MM-DD for kind="event".
-        """
-        ctx = tool_runtime.context
-        open_id = ctx.open_id
-        path = write_knowledge_record(
-            base_dir=base_dir,
-            open_id=open_id,
-            category=category,
-            name=name,
-            kind="event" if kind == "event" else "document",
-            mode="replace" if mode == "replace" else "upsert",
-            content=content,
-            event_date=event_date,
-        )
-        root = knowledge_dir(base_dir=base_dir, open_id=open_id)
-
-        return f"Written to {path.relative_to(root)} successfully"
-
-    @tool("knowledge_read")
-    def knowledge_read(rel_path: str, tool_runtime: ToolRuntime[FeishuRuntimeContext]) -> str:
-        """Read a knowledge file by relative path under /memory/{open_id}/knowledge."""
-        ctx = tool_runtime.context
-        return read_knowledge_record(base_dir=base_dir, open_id=ctx.open_id, rel_path=rel_path)
-
-    @tool("knowledge_tree")
-    def knowledge_tree(
-        tool_runtime: ToolRuntime[FeishuRuntimeContext],
-        rel_path: str = ".",
-        max_depth: int = 10,
-        max_entries: int = 500,
-    ) -> str:
-        """Show knowledge folder structure (tree) under /memory/{open_id}/knowledge."""
-        open_id = tool_runtime.context.open_id
-        return list_knowledge_tree(
-            base_dir=base_dir,
-            open_id=open_id,
-            rel_path=rel_path,
-            max_depth=max_depth,
-            max_entries=max_entries,
-        )
-
-    return [
-        cast(BaseTool, knowledge_write),
-        cast(BaseTool, knowledge_read),
-        cast(BaseTool, knowledge_tree),
-    ]
+    print("doc_rel:", doc_rel)
+    print("event_rel:", event_rel)
+    print()
+    print("tree:")
+    print(list_knowledge_tree(base_dir=base_dir, open_id=open_id, rel_path="."))

@@ -21,6 +21,7 @@ def run() -> None:
         raise ValueError("FEISHU_APP_ID and FEISHU_APP_SECRET are required")
 
     agent = build_agent(
+        
         system_prompt=SYSTEM_PROMPT,
     )
     feishu_client = build_feishu_client(app_id=FEISHU_APP_ID, app_secret=FEISHU_APP_SECRET)

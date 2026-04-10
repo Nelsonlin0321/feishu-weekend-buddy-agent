@@ -15,7 +15,7 @@ DEEPINFRA_API_KEY =  SecretStr(os.getenv("DEEPINFRA_API_KEY",""))
 def build_agent(
     system_prompt: str,
     *,
-    memory_base_dir: str = "./memory",
+    memory_base_dir: str = "./.memory",
     default_history_to_load: int = 20,
 ) -> Runnable:
     model = build_model()

@@ -27,7 +27,7 @@ def sanitize_open_id(open_id: str) -> str:
 
 
 def now_timestamp() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    return datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
 def messages_dir(*, base_dir: Path, open_id: str) -> Path:

@@ -76,20 +76,26 @@ def build_p2p_text_message_handler(
             "recursion_limit": 10,
         }
         context = FeishuRuntimeContext(open_id=open_id, history_to_load=history_to_load)
+        # result = agent.invoke(
+        #     {"messages": [{"role": "user", "content": user_text}]},
+        #     config=config,
+        #     context=context,
+        # )
+        # reply_obj = result["messages"][-1].content
+
         events = agent.stream(
-            {"messages": [{"role": "user", "content": user_text}]},
-            config=config,
+            {"messages": [{"role": "user", "content": "Hi"}]},
             context=context,
         )
         content:str=""
         for event in events:
-            if "messages" in event:
-                message = event["messages"][-1]
-                message.pretty_print()
-                content = message.content
+            if "model" in event:
+                if "messages" in event["model"]:
+                    message = event["model"]["messages"][-1]
+                    message.pretty_print()
+                    content = message.content
 
-        reply_obj = content
-        reply = reply_obj if isinstance(reply_obj, str) else str(reply_obj)
+        reply = content
         send_text_message(client=feishu_client, open_id=open_id, text=reply)
 
     return do_p2_im_message_receive_v1
