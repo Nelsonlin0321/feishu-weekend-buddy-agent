@@ -12,6 +12,5 @@
 - Steps:
     - 前往“事件与回调”面板 > 事件配置 -> 仅需使用 官方 SDK 启动长连接飞书客户端: https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/event-subscription-guide/long-connection-mode#1c227849: Completed
     - Test Receiving the message
-    - Publish the bot: v0.0.2
     - Test Sending Message
     
