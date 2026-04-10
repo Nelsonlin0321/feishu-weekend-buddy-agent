@@ -5,6 +5,7 @@ dotenv.load_dotenv()
 
 FEISHU_APP_ID=os.getenv("FEISHU_APP_ID","")
 FEISHU_APP_SECRET=os.getenv("FEISHU_APP_SECRET","")
+
 if not FEISHU_APP_ID or not FEISHU_APP_SECRET:
     raise ValueError("FEISHU_APP_ID and FEISHU_APP_SECRET are required")
 

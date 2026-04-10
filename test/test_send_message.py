@@ -1,5 +1,6 @@
 import os
 import dotenv
+import asyncio
 import json
 from uuid import uuid4
 import lark_oapi as lark
@@ -12,7 +13,7 @@ FEISHU_APP_SECRET=os.getenv("FEISHU_APP_SECRET","")
 if not FEISHU_APP_ID or not FEISHU_APP_SECRET:
     raise ValueError("FEISHU_APP_ID and FEISHU_APP_SECRET are required")
 
-def main():
+async def main():
     client = lark.Client.builder() \
         .app_id(FEISHU_APP_ID) \
         .app_secret(FEISHU_APP_SECRET) \
@@ -31,7 +32,7 @@ def main():
         .build()
 
     # 发起请求
-    response: CreateMessageResponse = client.im.v1.message.create(request) # # pyright: ignore [reportOptionalMemberAccess]
+    response: CreateMessageResponse = await client.im.v1.message.acreate(request) # # pyright: ignore [reportOptionalMemberAccess]
 
     # 处理失败返回
     # if not response.success():
@@ -45,4 +46,4 @@ def main():
 
 if __name__ == "__main__":
     # python -m test.test_send_message
-    main()
+    asyncio.run(main()) # 异步方式

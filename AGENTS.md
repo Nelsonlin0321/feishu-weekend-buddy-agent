@@ -41,4 +41,4 @@ Feel free to extend the demo in any direction that showcases your strengths:
  - ORM: MongoDB
  - Web Framework: FastAPI
  - Python Package Manager: uv
- - Feishu Integration: Feishu Python SDK
+ - Feishu Integration: Feishu  SDK
