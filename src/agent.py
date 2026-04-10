@@ -19,7 +19,7 @@ def build_agent(
     default_history_to_load: int = 20,
 ) -> Runnable:
     model = build_model()
-    base_dir = Path(memory_base_dir)
+    base_dir = Path(memory_base_dir).expanduser().resolve()
     tools = build_knowledge_tools(base_dir=base_dir)
     return create_agent(
         model=model,

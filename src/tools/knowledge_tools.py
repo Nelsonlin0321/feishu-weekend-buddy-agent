@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import cast
+from typing import cast,Literal
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool
@@ -17,54 +17,55 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
         category: str,
         name: str,
         content: str,
-        tool_runtime: ToolRuntime[FeishuRuntimeContext],
-        kind: str = "document",
-        mode: str = "upsert",
+        runtime: ToolRuntime[FeishuRuntimeContext],
+        kind: Literal["document", "event"] = "event",
+        mode: Literal["replace", "upsert"]='replace',
     ) -> str:
-        ctx = tool_runtime.context
+        """
+        Persist user-specific knowledge to the your local memory
+
+        Use this tool when you learn something that should be remembered across turns/sessions, such as:
+        preferences (food, activities), constraints (budget, time window), availability, locations, people/group vibe,
+        or an activity log of what happened on a specific day.
+
+        How it’s organized:
+        - Stored as markdown files, grouped by category (folder) and a slugified name.
+        - kind="document": stable file at {category}/{name}.md (good for profile/preferences you update over time).
+        - kind="event": timestamped file at {category}/YYYY-MM-DD/HH:MM:SS_{name}.md (good for logs/history).
+
+        Args:
+            category: A consistent bucket name. Examples: "profile", "preferences", "availability",
+                "constraints", "people", "places", "budgets", "activity_history", "conversation_notes".
+                In order to make the category consistent, you may have to read the knowledge tree. 
+            name: A descriptive title that makes the file easy to find later. Examples:
+                "Alice: food likes/dislikes", "Weekend availability", "Budget constraints", "Last weekend recap".
+            content: Markdown body to store. Prefer concrete, structured bullets. Avoid secrets (tokens, passwords).
+            kind: "document" or "event". Defaults to "event" in this tool signature.
+            mode: For kind="document", controls how updates are written:
+                - "replace": overwrite the file content
+                - "upsert": append a dated "Update ..." section if the file already exists
+                For kind="event", the file is always a new timestamped record. Defaults to "replace" here.
+
+        Returns:
+            A confirmation string including the relative path written under the user’s knowledge directory.
+
+        Recommended usage patterns:
+        - Long-lived memory (profile/preferences): kind="document" + mode="upsert"
+        - Single-shot snapshot (constraints right now): kind="document" + mode="replace"
+        - Activity log / what happened: kind="event"
+        """
+        ctx = runtime.context
         open_id = ctx.open_id
         open_id_safe = sanitize_open_id(open_id)
-        category_slug = slugify(category)
-        name_slug = slugify(name)
-        logger.debug(
-            "knowledge_write called open_id={} kind={} mode={} event_date={} category_slug={} name_slug={}",
-            open_id_safe,
-            kind,
-            mode,
-            None,
-            category_slug,
-            name_slug,
+        path = write_knowledge_record(
+            base_dir=base_dir,
+            open_id=open_id,
+            category=category,
+            name=name,
+            kind="event" if kind == "event" else "document",
+            mode="replace" if mode == "replace" else "upsert",
+            content=content,
         )
-        try:
-            path = write_knowledge_record(
-                base_dir=base_dir,
-                open_id=open_id,
-                category=category,
-                name=name,
-                kind="event" if kind == "event" else "document",
-                mode="replace" if mode == "replace" else "upsert",
-                content=content,
-            )
-        except Exception:
-            logger.exception(
-                "knowledge_write failed open_id={} kind={} mode={} event_date={} category_slug={} name_slug={}",
-                open_id_safe,
-                kind,
-                mode,
-                None,
-                category_slug,
-                name_slug,
-            )
-            raise
-
-        if not path.exists():
-            logger.error(
-                "knowledge_write post-check failed: file not found open_id={} path={}",
-                open_id_safe,
-                str(path),
-            )
-            raise RuntimeError("knowledge_write did not create the expected file")
-
         root = knowledge_dir(base_dir=base_dir, open_id=open_id)
         rel_path = path.relative_to(root)
         logger.debug(
@@ -76,26 +77,57 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
         return f"Written to {rel_path} successfully"
 
     @tool("knowledge_read")
-    def knowledge_read(rel_path: str, tool_runtime: ToolRuntime[FeishuRuntimeContext]) -> str:
-        ctx = tool_runtime.context
+    def knowledge_read(rel_path: str, runtime: ToolRuntime[FeishuRuntimeContext]) -> str:
+        """
+        Read previously stored knowledge
+
+        Use this tool when you need to recall details that were saved with knowledge_write, such as preferences,
+        constraints, availability, or past activity logs.
+
+        Args:
+            rel_path: File path relative to the user’s knowledge root. Example:
+                - "preferences/alice__food_likes_dislikes.md"
+                - "activity_history/2026-04-10/23:15:43_weekend_plan.md"
+                Prefer getting valid paths by calling the knowledge_tree tool first.
+
+        Returns:
+            The full markdown content of the file.
+        """
+        ctx = runtime.context
         open_id_safe = sanitize_open_id(ctx.open_id)
         logger.debug("knowledge_read called open_id={} rel_path={}", open_id_safe, rel_path)
-        try:
-            content = read_knowledge_record(base_dir=base_dir, open_id=ctx.open_id, rel_path=rel_path)
-        except Exception:
-            logger.exception("knowledge_read failed open_id={} rel_path={}", open_id_safe, rel_path)
-            raise
-        logger.debug("knowledge_read success open_id={} rel_path={} chars={}", open_id_safe, rel_path, len(content))
+        content = read_knowledge_record(base_dir=base_dir, open_id=ctx.open_id, rel_path=rel_path)
         return content
 
     @tool("knowledge_tree")
     def knowledge_tree(
-        tool_runtime: ToolRuntime[FeishuRuntimeContext],
+        runtime: ToolRuntime[FeishuRuntimeContext],
         rel_path: str = ".",
         max_depth: int = 10,
         max_entries: int = 500,
     ) -> str:
-        open_id = tool_runtime.context.open_id
+        """
+        List the current user’s knowledge folder as a readable tree (paths under /memory/{open_id}/knowledge).
+
+        Use this tool to:
+        - Discover what the agent has already saved for the user (categories and files).
+        - Get the exact rel_path values to pass into knowledge_read.
+        - Keep category naming consistent before writing new records with knowledge_write.
+
+        Args:
+            rel_path: Starting folder (relative to the user’s knowledge root). Defaults to "." (the root).
+                Examples:
+                - "." (everything)
+                - "preferences"
+                - "activity_history/2026-04-10"
+            max_depth: How many nested directory levels to include.
+            max_entries: Maximum number of lines/entries to return (output will truncate beyond this).
+
+        Returns:
+            A newline-separated tree. Directories end with "/". Each file line shows the rel_path you can reuse
+            in knowledge_read.
+        """
+        open_id = runtime.context.open_id
         open_id_safe = sanitize_open_id(open_id)
         logger.debug(
             "knowledge_tree called open_id={} rel_path={} max_depth={} max_entries={}",

@@ -22,7 +22,7 @@ def write_knowledge_record(
     if kind == "event":
         rel = f"{category_slug}/{day}/{time}_{name_slug}.md"
     else:
-        rel = f"{category_slug}/{name_slug}.md"
+        rel = f"{category_slug}/{day}/{name_slug}.md"
 
     path = safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=rel)
     path.parent.mkdir(parents=True, exist_ok=True)
