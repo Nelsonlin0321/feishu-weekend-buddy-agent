@@ -7,10 +7,27 @@ Copy-paste these messages into your Feishu chat with the bot. Each section is a 
 **Message 1**
 > I want to do something this weekend with people.
 
-1. **What kind of vibe**: adventurous
-2. **When this weekend?**: Saturday
-3. **Roughly where**: Lion Mountain  
-4. **Budget** — No mooney required
+Vibe: adventurous
+When: Saturday
+Roughly where: Lion Mountain  
+Budget: No mooney required
+Who: the user with open_id: op_yus9dj3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 **Message 2**
 > I’m in Shanghai. Budget is 200 RMB per person. Prefer something not too far from Jing’an.
