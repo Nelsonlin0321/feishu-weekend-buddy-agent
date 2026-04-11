@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 from typing import cast,Literal
 
 from langchain.tools import ToolRuntime, tool
@@ -6,7 +7,7 @@ from langchain_core.tools import BaseTool
 from loguru import logger
 
 from src.middlewares.history_storage import sanitize_open_id
-from src.tools.knowledge_paths import knowledge_dir, slugify
+from src.tools.knowledge_paths import knowledge_dir, safe_knowledge_path, slugify
 from src.tools.knowledge_records import list_knowledge_tree, read_knowledge_record, write_knowledge_record
 from src.types.context import FeishuRuntimeContext
 
@@ -35,8 +36,9 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
 
         Args:
             category: A consistent bucket name. Examples: "profile", "preferences", "availability",
-                "constraints", "people", "places", "budgets", "activity_history", "conversation_notes".
-                In order to make the category consistent, you may have to read the knowledge tree. 
+                "constraints", "people", "places", "budgets", "activity_history", "conversation_notes", etc
+                You can create a new category if your knowledge is not fit in any existing category to capture the any user intent.
+                In order to make the category consistent, you may have to read the knowledge tree first. 
             name: A descriptive title that makes the file easy to find later. Examples:
                 "Alice: food likes/dislikes", "Weekend availability", "Budget constraints", "Last weekend recap".
             content: Markdown body to store. Prefer concrete, structured bullets. Avoid secrets (tokens, passwords).
@@ -99,6 +101,70 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
         content = read_knowledge_record(base_dir=base_dir, open_id=ctx.open_id, rel_path=rel_path)
         return content
 
+    @tool("knowledge_rename")
+    def knowledge_rename(
+        src_rel_path: str,
+        dst_rel_path: str,
+        runtime: ToolRuntime[FeishuRuntimeContext],
+        overwrite: bool = False,
+    ) -> str:
+        """
+        Rename or move a stored knowledge file/folder.
+
+        Use this tool when you want to:
+        - Fix a category folder name
+        - Re-organize stored knowledge
+        - Rename a single file to a better title
+
+        Args:
+            src_rel_path: Source path relative to the user’s knowledge root.
+                Prefer getting valid paths by calling knowledge_tree first.
+            dst_rel_path: Destination path relative to the user’s knowledge root.
+                If dst_rel_path points to an existing directory, the source will be moved into it.
+            overwrite: If true, replace an existing destination file/folder. Default false.
+
+        Returns:
+            A confirmation string including the final destination relative path.
+        """
+        ctx = runtime.context
+        open_id = ctx.open_id
+        open_id_safe = sanitize_open_id(open_id)
+
+        root = knowledge_dir(base_dir=base_dir, open_id=open_id).resolve()
+        src = safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=src_rel_path)
+        dst = safe_knowledge_path(base_dir=base_dir, open_id=open_id, rel_path=dst_rel_path)
+
+        if src.resolve() == root:
+            raise ValueError("src_rel_path cannot be the knowledge root")
+        if dst.resolve() == root:
+            raise ValueError("dst_rel_path cannot be the knowledge root")
+        if not src.exists():
+            raise FileNotFoundError(f"Source does not exist: {src_rel_path}")
+
+        final_dst = dst
+        if dst.exists() and dst.is_dir():
+            final_dst = dst / src.name
+
+        if final_dst.exists():
+            if not overwrite:
+                rel_final = str(final_dst.relative_to(root))
+                raise FileExistsError(f"Destination already exists: {rel_final}")
+            if final_dst.is_dir():
+                shutil.rmtree(final_dst)
+            else:
+                final_dst.unlink()
+
+        final_dst.parent.mkdir(parents=True, exist_ok=True)
+        moved_to = Path(shutil.move(str(src), str(final_dst))).resolve()
+        rel_moved = moved_to.relative_to(root)
+        logger.debug(
+            "knowledge_rename success open_id={} src={} dst={}",
+            open_id_safe,
+            src_rel_path,
+            str(rel_moved),
+        )
+        return f"Renamed to {rel_moved} successfully"
+
     @tool("knowledge_tree")
     def knowledge_tree(
         runtime: ToolRuntime[FeishuRuntimeContext],
@@ -160,5 +226,6 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
     return [
         cast(BaseTool, knowledge_write),
         cast(BaseTool, knowledge_read),
+        cast(BaseTool, knowledge_rename),
         cast(BaseTool, knowledge_tree),
     ]
