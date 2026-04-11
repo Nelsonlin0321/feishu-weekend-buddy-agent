@@ -84,7 +84,7 @@ def build_p2p_text_message_handler(
         # reply_obj = result["messages"][-1].content
 
         events = agent.stream(
-            {"messages": [{"role": "user", "content": "Hi"}]},
+            {"messages": [{"role": "user", "content": user_text}]},
             context=context,
         )
         content:str=""

@@ -27,11 +27,11 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
 
         Use this tool when you learn something that should be remembered across turns/sessions, such as:
         preferences (food, activities), constraints (budget, time window), availability, locations, people/group vibe,
-        or an activity log of what happened on a specific day.
+        or an activity log of what happened on a specific day. Before calling this tool, check the knowledge tree to avoid duplicates.
 
         How it’s organized:
         - Stored as markdown files, grouped by category (folder) and a slugified name.
-        - kind="document": stable file at {category}/{name}.md (good for profile/preferences you update over time).
+        - kind="document": stable file at {category}/YYYY-MM-DD/{name}.md (good for profile/preferences you update over time).
         - kind="event": timestamped file at {category}/YYYY-MM-DD/HH:MM:SS_{name}.md (good for logs/history).
 
         Args:
@@ -223,9 +223,76 @@ def build_knowledge_tools(*, base_dir: Path) -> list[BaseTool]:
         logger.debug("knowledge_tree success open_id={} lines={}", open_id_safe, tree.count("\n") + 1 if tree else 0)
         return tree
 
+    @tool("invite_send_mock")
+    def invite_send_mock(
+        to_open_id: str,
+        text: str,
+        runtime: ToolRuntime[FeishuRuntimeContext],
+        purpose: Literal["invite", "reminder", "confirmation"] = "invite",
+        title: str = "",
+    ) -> str:
+        """
+        Sending an invite message to someone (no real Feishu API call).
+
+        Use this tool to outbound coordination messages. It logs the "sent"
+        invite into the user's local knowledge store as an event record.
+
+        Args:
+            to_open_id: Recipient's Feishu open_id, ask the user to provide this.
+            text: Message content you would send.
+            purpose: Message type. One of: "invite", "reminder", "confirmation".
+            title: Optional short label to help later browsing/searching.
+
+        Returns:
+            A confirmation string including the relative path where the invite was logged.
+        """
+        ctx = runtime.context
+        from_open_id = ctx.open_id
+        from_open_id_safe = sanitize_open_id(from_open_id)
+        to_open_id_safe = sanitize_open_id(to_open_id)
+
+        name_parts: list[str] = [purpose, "to", to_open_id_safe]
+        if title.strip():
+            name_parts.append(title.strip())
+        name = " ".join(name_parts)
+
+        content = "\n".join(
+            [
+                f"- purpose: {purpose}",
+                f"- from_open_id: {from_open_id_safe}",
+                f"- to_open_id: {to_open_id_safe}",
+                "",
+                "## Message",
+                "",
+                text.strip(),
+                "",
+            ]
+        ).strip()
+
+        path = write_knowledge_record(
+            base_dir=base_dir,
+            open_id=from_open_id,
+            category="invites",
+            name=name,
+            kind="event",
+            content=content,
+            mode="replace",
+        )
+        root = knowledge_dir(base_dir=base_dir, open_id=from_open_id)
+        rel_path = path.relative_to(root)
+        logger.debug(
+            "invite_send_mock success from_open_id={} to_open_id={} rel_path={} bytes={}",
+            from_open_id_safe,
+            to_open_id_safe,
+            str(rel_path),
+            path.stat().st_size,
+        )
+        return f"Invite logged to {rel_path} successfully"
+
     return [
         cast(BaseTool, knowledge_write),
         cast(BaseTool, knowledge_read),
         cast(BaseTool, knowledge_rename),
         cast(BaseTool, knowledge_tree),
+        cast(BaseTool, invite_send_mock),
     ]
