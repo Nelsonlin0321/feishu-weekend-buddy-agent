@@ -1,0 +1,11 @@
+skills-lock.json
+TEST_MESSAGES.md
+TODO.md
+spec.md
+notebooks/
+.venv/
+.trae/
+.vscode/
+PROGRESS.md
+.gitignore
+uv.lock
